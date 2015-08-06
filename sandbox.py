@@ -85,25 +85,49 @@ def install(defs, this, component):
     _install(defs, this, component)
 
 
-def _install(defs, this, component):
+def _install(defs, this, component, splits=None):
+    ## Artifact splitting:
+    ## we need to work out what real component name is if it's the
+    ## name of a split artifact, and handle the "artifacts" list
+    ## in the strata list ("contents") of a system.
+    ## splits is a list of artifacts we want to unpack
+    ## if unset, unpack everything.
     if os.path.exists(os.path.join(this['sandbox'], 'baserock',
                                    component['name'] + '.meta')):
         return
 
-    for it in component.get('build-depends', []):
-        dependency = defs.get(it)
-        if (dependency.get('build-mode', 'staging') ==
+    if this.get('kind') is not 'system':
+        # Don't install build-deps when assembling a system
+        for it in component.get('build-depends', []):
+            dependency = defs.get(it)
+            if (dependency.get('build-mode', 'staging') ==
                 component.get('build-mode', 'staging')):
-            _install(defs, this, dependency)
+                _install(defs, this, dependency)
 
     for it in component.get('contents', []):
         subcomponent = defs.get(it)
-        if subcomponent.get('build-mode', 'staging') != 'bootstrap':
-            _install(defs, this, subcomponent)
+        artifacts = None
+        if component.get('kind') is 'system':
+            artifacts = subcomponent.get('_artifacts', None)
+
+        if artifacts:
+            for artifact, chunks in artifacts:
+                _install(defs, this, defs.get(artifact), chunks)
+        else:
+            if subcomponent.get('build-mode', 'staging') != 'bootstrap':
+                _install(defs, this, subcomponent, splits)
 
     unpackdir = cache.unpack(defs, component)
     if this.get('kind') is 'system':
-        utils.copy_all_files(unpackdir, this['sandbox'])
+        ## if the artifact is a split one, we want to assemble a list
+        ## of "products" to unpack and use utils.copy_file_list() instead
+        if splits:
+            files = []
+            for artifact in splits:
+                files.extend(artifact['files'])
+            utils.copy_file_list(unpackdir, this['sandbox'], files)
+        else:
+            utils.copy_all_files(unpackdir, this['sandbox'])
     else:
         utils.hardlink_all_files(unpackdir, this['sandbox'])
 

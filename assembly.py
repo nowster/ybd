@@ -26,6 +26,7 @@ import sandbox
 from shutil import copyfile
 import utils
 import datetime
+import re
 
 
 def deploy(defs, target):
@@ -90,6 +91,8 @@ def assemble(defs, target):
     '''Assemble dependencies and contents recursively until target exists.'''
 
     if cache.get_cache(defs, target):
+        # needed for artifact splitting
+        load_manifest(defs, target)
         return cache.cache_key(defs, target)
 
     random.seed(datetime.datetime.now())
@@ -133,7 +136,7 @@ def assemble(defs, target):
             with app.timer(component, 'build'):
                 build(defs, component)
         with app.timer(component, 'artifact creation'):
-            do_manifest(component)
+            do_manifest(defs, component)
             cache.cache(defs, component,
                         full_root=component.get('kind') == "system")
         sandbox.remove(component)
@@ -245,11 +248,118 @@ def do_deployment_manifest(system, configuration):
         f.flush()
 
 
-def do_manifest(this):
+def do_chunk_splits(defs, this, metafile):
+    install_dir = this['install']
+    # Find the chunk-specific rule, otherwise use the defaults
+    split_rules = this.get('products',
+                           defs.defaults.get_chunk_split_rules())
+
+    # Compile the regexps
+    regexps = []
+    splits = {}
+    for rule in split_rules:
+        regexp = re.compile('^(?:'
+                            + '|'.join(rule.get('include'))
+                            + ')$')
+        artifact = rule.get('artifact')
+        if artifact.startswith('-'):
+            artifact = this['name'] + artifact
+        regexps.append(artifact, regexp])
+        # always include the metafile
+        splits[artifact] = [metafile]
+
+    used_dirs = {}
+    for root, dirs, files in os.walk(install_dir, topdown=False):
+        for name in files:
+            path = os.path.join(root, name)
+            for artifact, rule in regexps:
+                if rule.match(path):
+                    splits[artifact].append(path)
+                    used_dirs[root] = True
+                    break
+
+        for name in dirs:
+            path = os.path.join(root, name)
+            if not path in used_dirs:
+                for artifact, rule in regexps:
+                    if rule.match(path):
+                        splits[artifact].append(path)
+                        break
+
+    return [ { 'artifact': a, 'files': sorted(splits[a]) }
+             for a, r in regexps ]
+
+
+def do_stratum_splits(defs, this):
+    # Find the stratum-specific rule, otherwise use the defaults
+    split_rules = this.get('products', {})
+    default_rules = defs.defaults.get_stratum_split_rules())
+
+    # Compile the regexps
+    regexps = []
+    splits = {}
+    for rule in split_rules:
+        regexp = re.compile('^(?:'
+                            + '|'.join(rule.get('include'))
+                            + ')$')
+        artifact = rule.get('artifact')
+        if artifact.startswith('-'):
+            artifact = this['name'] + artifact
+        regexps.append([artifact, regexp])
+        splits[artifact] = []
+
+    for rule in default_rules:
+        artifact = rule.get('artifact')
+        if artifact.startswith('-'):
+            artifact = this['name'] + artifact
+        if artifact not in splits:
+            regexp = re.compile('^(?:'
+                                + '|'.join(rule.get('include'))
+                                + ')$')
+            regexps.append(artifact, regexp])
+            splits[artifact] = []
+
+    for chunk in this['chunks']:
+        chunk_artifacts = defs[chunk['name']].get('_artifacts', {})
+        for name in [ a['artifact'] for a in chunk_artifacts]:
+            for artifact, rule in regexps:
+                if rule.match(name):
+                    splits[artifact].append(name)
+                    break
+
+    return [ { 'artifact': a, 'chunks': sorted(splits[a]) }
+             for a, r in regexps ]
+
+
+def do_manifest(defs, this):
     metafile = os.path.join(this['baserockdir'], this['name'] + '.meta')
+    metadata = {}
+    metadata['repo'] = this.get('repo')
+    metadata['ref'] = this.get('ref')
+
+    if this['kind'] == 'chunk':
+        metadata['products'] = do_chunk_splits(defs, this, metafile)
+    else if this['kind'] == 'stratum':
+        metadata['products'] = do_stratum_splits(defs, this)
+
+    if metadata.get('products', None):
+        defs[this['name']]['_artifacts'] = metadata['products']
+
     with app.chdir(this['install']), open(metafile, "w") as f:
-        f.write("repo: %s\nref: %s\n" % (this.get('repo'), this.get('ref')))
-        f.flush()
-        call(['find'], stdout=f, stderr=f)
+        yaml.dump(metadata, f)
     copyfile(metafile, os.path.join(app.config['artifacts'],
                                     this['cache'] + '.meta'))
+
+def load_manifest(defs, target):
+    metafile = cache.get_cache(defs, target) + ".meta"
+    metadata = None
+    try:
+        with open(metafile, "r") as f:
+            metadata = yaml.safe_load(f)
+    except:
+        app.log('ASSEMBLY', 'WARNING: problem loading metadata, metafile)
+        return None
+
+    if metadata:
+        if metadata.get('products', None):
+            defs[target['name']]['_artifacts'] = metadata['products']
