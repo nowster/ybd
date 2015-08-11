@@ -293,7 +293,7 @@ def do_chunk_splits(defs, this, metafile):
 def do_stratum_splits(defs, this):
     # Find the stratum-specific rule, otherwise use the defaults
     split_rules = this.get('products', {})
-    default_rules = defs.defaults.get_stratum_split_rules())
+    default_rules = defs.defaults.get_stratum_split_rules()
 
     # Compile the regexps
     regexps = []
