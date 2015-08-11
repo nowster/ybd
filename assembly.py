@@ -264,7 +264,7 @@ def do_chunk_splits(defs, this, metafile):
         artifact = rule.get('artifact')
         if artifact.startswith('-'):
             artifact = this['name'] + artifact
-        regexps.append(artifact, regexp])
+        regexps.append([artifact, regexp])
         # always include the metafile
         splits[artifact] = [metafile]
 
