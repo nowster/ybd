@@ -316,7 +316,7 @@ def do_stratum_splits(defs, this):
             regexp = re.compile('^(?:'
                                 + '|'.join(rule.get('include'))
                                 + ')$')
-            regexps.append(artifact, regexp])
+            regexps.append([artifact, regexp])
             splits[artifact] = []
 
     for chunk in this['chunks']:
