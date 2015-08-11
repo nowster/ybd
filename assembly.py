@@ -339,7 +339,7 @@ def do_manifest(defs, this):
 
     if this['kind'] == 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
-    else if this['kind'] == 'stratum':
+    elif this['kind'] == 'stratum':
         metadata['products'] = do_stratum_splits(defs, this)
 
     if metadata.get('products', None):
