@@ -27,6 +27,7 @@ from shutil import copyfile
 import utils
 import datetime
 import re
+import yaml
 
 
 def deploy(defs, target):
@@ -257,6 +258,14 @@ def do_chunk_splits(defs, this, metafile):
     # Compile the regexps
     regexps = []
     splits = {}
+    used_dirs = {}
+
+    def mark_used_path(path):
+        while path:
+            path, file = os.path.split(path)
+            if path:
+                used_dirs[path] = True
+
     for rule in split_rules:
         regexp = re.compile('^(?:'
                             + '|'.join(rule.get('include'))
@@ -266,21 +275,27 @@ def do_chunk_splits(defs, this, metafile):
             artifact = this['name'] + artifact
         regexps.append([artifact, regexp])
         # always include the metafile
-        splits[artifact] = [metafile]
+        metapath = os.path.relpath(metafile, install_dir)
+        splits[artifact] = [metapath]
+        mark_used_path(metapath)
 
-    used_dirs = {}
     for root, dirs, files in os.walk(install_dir, topdown=False):
+	root = os.path.relpath(root, install_dir)
+	if root is '.':
+	    root = ''
+
         for name in files:
             path = os.path.join(root, name)
             for artifact, rule in regexps:
                 if rule.match(path):
                     splits[artifact].append(path)
-                    used_dirs[root] = True
+                    mark_used_path(path)
                     break
 
         for name in dirs:
             path = os.path.join(root, name)
             if not path in used_dirs:
+		path = path + '/'
                 for artifact, rule in regexps:
                     if rule.match(path):
                         splits[artifact].append(path)
@@ -319,8 +334,8 @@ def do_stratum_splits(defs, this):
             regexps.append([artifact, regexp])
             splits[artifact] = []
 
-    for chunk in this['chunks']:
-        chunk_artifacts = defs[chunk['name']].get('_artifacts', {})
+    for chunk in this['contents']:
+        chunk_artifacts = defs._definitions[chunk].get('_artifacts', {})
         for name in [ a['artifact'] for a in chunk_artifacts]:
             for artifact, rule in regexps:
                 if rule.match(name):
@@ -343,15 +358,17 @@ def do_manifest(defs, this):
         metadata['products'] = do_stratum_splits(defs, this)
 
     if metadata.get('products', None):
-        defs[this['name']]['_artifacts'] = metadata['products']
+        defs._definitions[this['path']]['_artifacts'] = metadata['products']
 
     with app.chdir(this['install']), open(metafile, "w") as f:
-        yaml.dump(metadata, f)
+        yaml.safe_dump(metadata, f, default_flow_style=False)
+
     copyfile(metafile, os.path.join(app.config['artifacts'],
                                     this['cache'] + '.meta'))
 
 def load_manifest(defs, target):
-    metafile = cache.get_cache(defs, target) + ".meta"
+    cachepath, cachedir = os.path.split(cache.get_cache(defs, target))
+    metafile = cachepath + ".meta"
     metadata = None
     try:
         with open(metafile, "r") as f:
@@ -361,5 +378,6 @@ def load_manifest(defs, target):
         return None
 
     if metadata:
+        app.log('assembly', 'loaded metadata for', target['path'])
         if metadata.get('products', None):
-            defs[target['name']]['_artifacts'] = metadata['products']
+            defs._definitions[target['path']]['_artifacts'] = metadata['products']
