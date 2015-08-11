@@ -357,7 +357,7 @@ def load_manifest(defs, target):
         with open(metafile, "r") as f:
             metadata = yaml.safe_load(f)
     except:
-        app.log('ASSEMBLY', 'WARNING: problem loading metadata, metafile)
+        app.log('ASSEMBLY', 'WARNING: problem loading metadata', metafile)
         return None
 
     if metadata:
