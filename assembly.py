@@ -351,14 +351,12 @@ def do_manifest(defs, this):
     metadata = {}
     metadata['repo'] = this.get('repo')
     metadata['ref'] = this.get('ref')
+    kind = this.get('kind', 'chunk')
 
-    if this.get('kind', None) is 'chunk':
+    if kind is 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
-    elif this.get('kind', None) is 'stratum':
+    elif kind is 'stratum':
         metadata['products'] = do_stratum_splits(defs, this)
-    elif this.get('kind', None) is None:
-        print yaml.safe_dump(this, default_flow_style=False)
-        raise KeyError('component %s missing a "kind"' % this['name'])
 
     if metadata.get('products', None):
         defs.set_member(target['path'], '_artifacts', metadata['products'])
