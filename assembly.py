@@ -335,6 +335,11 @@ def do_stratum_splits(defs, this):
             splits[artifact] = []
 
     for chunk in this['contents']:
+        chunk_artifacts = defs.get(chunk).get('artifacts', {})
+        for artifact, target in chunk_artifacts:
+            splits[artifact].append(target)
+
+    for chunk in this['contents']:
         chunk_artifacts = defs.get(chunk).get('_artifacts', {})
         for name in [ a['artifact'] for a in chunk_artifacts]:
             for artifact, rule in regexps:
