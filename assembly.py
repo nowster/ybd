@@ -335,7 +335,7 @@ def do_stratum_splits(defs, this):
             splits[artifact] = []
 
     for chunk in this['contents']:
-        chunk_artifacts = defs._definitions[chunk].get('_artifacts', {})
+        chunk_artifacts = defs.get(chunk).get('_artifacts', {})
         for name in [ a['artifact'] for a in chunk_artifacts]:
             for artifact, rule in regexps:
                 if rule.match(name):
@@ -352,13 +352,16 @@ def do_manifest(defs, this):
     metadata['repo'] = this.get('repo')
     metadata['ref'] = this.get('ref')
 
-    if this['kind'] == 'chunk':
+    if this.get('kind', None) is 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
-    elif this['kind'] == 'stratum':
+    elif this.get('kind', None) is 'stratum':
         metadata['products'] = do_stratum_splits(defs, this)
+    elif this.get('kind', None) is None:
+        print yaml.safe_dump(this, default_flow_style=False)
+        raise KeyError('component %s missing a "kind"' % this['name'])
 
     if metadata.get('products', None):
-        defs._definitions[this['path']]['_artifacts'] = metadata['products']
+        defs.set_member(target['path'], '_artifacts', metadata['products'])
 
     with app.chdir(this['install']), open(metafile, "w") as f:
         yaml.safe_dump(metadata, f, default_flow_style=False)
@@ -380,4 +383,4 @@ def load_manifest(defs, target):
     if metadata:
         app.log('assembly', 'loaded metadata for', target['path'])
         if metadata.get('products', None):
-            defs._definitions[target['path']]['_artifacts'] = metadata['products']
+            defs.set_member(target['path'], '_artifacts', metadata['products'])
