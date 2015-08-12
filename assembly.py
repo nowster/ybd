@@ -302,8 +302,9 @@ def do_chunk_splits(defs, this, metafile):
                         splits[artifact].append(path)
                         break
 
+    unique_artifacts = sorted(set( [a for a, r in regexps] ))
     return [ { 'artifact': a, 'files': sorted(splits[a]) }
-             for a, r in regexps ]
+             for a in unique_artifacts ]
 
 
 def do_stratum_splits(defs, this):
@@ -338,8 +339,8 @@ def do_stratum_splits(defs, this):
 
     for chunk in this['contents']:
         chunk_artifacts = defs.get(chunk).get('artifacts', {})
-        for artifact, target in chunk_artifacts:
-            splits[artifact].append(target)
+        for artifact, target in chunk_artifacts.items():
+            splits[target].append(artifact)
 
     for chunk in this['contents']:
         chunk_artifacts = defs.get(chunk).get('_artifacts', {})
@@ -349,7 +350,7 @@ def do_stratum_splits(defs, this):
                     splits[artifact].append(name)
                     break
 
-    return [ { 'artifact': a, 'chunks': sorted(splits[a]) }
+    return [ { 'artifact': a, 'chunks': sorted(set(splits[a])) }
              for a, r in regexps ]
 
 
@@ -361,9 +362,9 @@ def do_manifest(defs, this):
     kind = this.get('kind', 'chunk')
     app.log(this['name'], 'is a', kind)
 
-    if kind is 'chunk':
+    if kind == 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
-    elif kind is 'stratum':
+    elif kind == 'stratum':
         metadata['products'] = do_stratum_splits(defs, this)
 
     if metadata.get('products', None):
@@ -379,14 +380,23 @@ def load_manifest(defs, target):
     cachepath, cachedir = os.path.split(cache.get_cache(defs, target))
     metafile = cachepath + ".meta"
     metadata = None
+    definition = defs.get(target)
+    name = definition['name']
+
+    path = None
+    if type(target) is str:
+        path = target
+    else:
+        path = target['name']
+
     try:
         with open(metafile, "r") as f:
             metadata = yaml.safe_load(f)
     except:
-        app.log(target['name'], 'WARNING: problem loading metadata', metafile)
+        app.log(name, 'WARNING: problem loading metadata', metafile)
         return None
 
     if metadata:
-        app.log(target['name'], 'loaded metadata for', target['path'])
+        app.log(name, 'loaded metadata for', path)
         if metadata.get('products', None):
-            defs.set_member(target['path'], '_artifacts', metadata['products'])
+            defs.set_member(path, '_artifacts', metadata['products'])
