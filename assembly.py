@@ -357,6 +357,7 @@ def do_manifest(defs, this):
     metadata['repo'] = this.get('repo')
     metadata['ref'] = this.get('ref')
     kind = this.get('kind', 'chunk')
+    app.log(this['name'], 'is a ', kind)
 
     if kind is 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
