@@ -250,6 +250,7 @@ def do_deployment_manifest(system, configuration):
 
 
 def do_chunk_splits(defs, this, metafile):
+    app.log(this['name'], 'splitting chunk')
     install_dir = this['install']
     # Find the chunk-specific rule, otherwise use the defaults
     split_rules = this.get('products',
@@ -307,6 +308,7 @@ def do_chunk_splits(defs, this, metafile):
 
 def do_stratum_splits(defs, this):
     # Find the stratum-specific rule, otherwise use the defaults
+    app.log(this['name'], 'splitting stratum')
     split_rules = this.get('products', {})
     default_rules = defs.defaults.get_stratum_split_rules()
 
@@ -357,7 +359,7 @@ def do_manifest(defs, this):
     metadata['repo'] = this.get('repo')
     metadata['ref'] = this.get('ref')
     kind = this.get('kind', 'chunk')
-    app.log(this['name'], 'is a ', kind)
+    app.log(this['name'], 'is a', kind)
 
     if kind is 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
