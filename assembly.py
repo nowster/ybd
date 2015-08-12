@@ -364,7 +364,7 @@ def do_manifest(defs, this):
         metadata['products'] = do_stratum_splits(defs, this)
 
     if metadata.get('products', None):
-        defs.set_member(target['path'], '_artifacts', metadata['products'])
+        defs.set_member(this['path'], '_artifacts', metadata['products'])
 
     with app.chdir(this['install']), open(metafile, "w") as f:
         yaml.safe_dump(metadata, f, default_flow_style=False)
@@ -380,10 +380,10 @@ def load_manifest(defs, target):
         with open(metafile, "r") as f:
             metadata = yaml.safe_load(f)
     except:
-        app.log('ASSEMBLY', 'WARNING: problem loading metadata', metafile)
+        app.log(target['name'], 'WARNING: problem loading metadata', metafile)
         return None
 
     if metadata:
-        app.log('assembly', 'loaded metadata for', target['path'])
+        app.log(target['name'], 'loaded metadata for', target['path'])
         if metadata.get('products', None):
             defs.set_member(target['path'], '_artifacts', metadata['products'])
