@@ -130,7 +130,10 @@ def assemble(defs, target):
             subcomponent = defs.get(it)
             if subcomponent.get('build-mode') != 'bootstrap':
                 assemble(defs, subcomponent)
-                sandbox.install(defs, component, subcomponent)
+                splits = None
+                if component.get('kind') == 'system':
+                    splits = subcomponent.get('artifacts')
+                sandbox.install(defs, component, subcomponent, splits)
 
         app.config['counter'] += 1
         if 'systems' not in component:
@@ -199,7 +202,7 @@ def get_build_commands(defs, this):
 
     '''
 
-    if this.get('kind', None) == "system":
+    if this.get('kind') == "system":
         # Systems must run their integration scripts as install commands
         this['install-commands'] = gather_integration_commands(defs, this)
         return
@@ -213,7 +216,7 @@ def get_build_commands(defs, this):
         app.log(this, 'Autodetected build system is', build_system)
 
     for build_step in defs.defaults.build_steps:
-        if this.get(build_step, None) is None:
+        if this.get(build_step) is None:
             commands = defs.defaults.build_systems[build_system].get(build_step, [])
             this[build_step] = commands
 
@@ -282,7 +285,7 @@ def do_chunk_splits(defs, this, metafile):
 
     for root, dirs, files in os.walk(install_dir, topdown=False):
 	root = os.path.relpath(root, install_dir)
-	if root is '.':
+	if root == '.':
 	    root = ''
 
         for name in files:
@@ -296,9 +299,8 @@ def do_chunk_splits(defs, this, metafile):
         for name in dirs:
             path = os.path.join(root, name)
             if not path in used_dirs:
-		path = path + '/'
                 for artifact, rule in regexps:
-                    if rule.match(path):
+                    if rule.match(path) or rule.match(path + '/'):
                         splits[artifact].append(path)
                         break
 
@@ -360,14 +362,13 @@ def do_manifest(defs, this):
     metadata['repo'] = this.get('repo')
     metadata['ref'] = this.get('ref')
     kind = this.get('kind', 'chunk')
-    app.log(this['name'], 'is a', kind)
 
     if kind == 'chunk':
         metadata['products'] = do_chunk_splits(defs, this, metafile)
     elif kind == 'stratum':
         metadata['products'] = do_stratum_splits(defs, this)
 
-    if metadata.get('products', None):
+    if metadata.get('products'):
         defs.set_member(this['path'], '_artifacts', metadata['products'])
 
     with app.chdir(this['install']), open(metafile, "w") as f:
@@ -398,5 +399,6 @@ def load_manifest(defs, target):
 
     if metadata:
         app.log(name, 'loaded metadata for', path)
-        if metadata.get('products', None):
+        defs.set_member(path, '_loaded', True)
+        if metadata.get('products'):
             defs.set_member(path, '_artifacts', metadata['products'])

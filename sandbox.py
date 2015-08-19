@@ -28,6 +28,7 @@ import app
 import cache
 import utils
 from repos import get_repo_url
+import assembly
 
 
 # This must be set to a sandboxlib backend before the run_sandboxed() function
@@ -76,27 +77,26 @@ def remove(this):
         app.log(this, 'Cleaned up', this['sandbox'])
 
 
-def install(defs, this, component):
+def install(defs, this, component, splits=None):
     if os.path.exists(os.path.join(this['sandbox'], 'baserock',
                                    component['name'] + '.meta')):
         return
 
     app.log(this, 'Installing %s' % component['cache'])
-    _install(defs, this, component)
+    _install(defs, this, component, splits)
 
 
 def _install(defs, this, component, splits=None):
-    ## Artifact splitting:
-    ## we need to work out what real component name is if it's the
-    ## name of a split artifact, and handle the "artifacts" list
-    ## in the strata list ("contents") of a system.
-    ## splits is a list of artifacts we want to unpack
-    ## if unset, unpack everything.
     if os.path.exists(os.path.join(this['sandbox'], 'baserock',
                                    component['name'] + '.meta')):
         return
 
-    if this.get('kind') is not 'system':
+    if not component.get('_loaded', False):
+        assembly.load_manifest(defs, component.get('path'))
+        component = defs.get(component.get('path'))
+
+    building_system = (this.get('kind') == 'system')
+    if not building_system:
         # Don't install build-deps when assembling a system
         for it in component.get('build-depends', []):
             dependency = defs.get(it)
@@ -104,27 +104,35 @@ def _install(defs, this, component, splits=None):
                 component.get('build-mode', 'staging')):
                 _install(defs, this, dependency)
 
+    subchunks = None
+    if building_system:
+        subchunks = component.get('_artifacts')
+
     for it in component.get('contents', []):
         subcomponent = defs.get(it)
         artifacts = None
-        if component.get('kind') is 'system':
-            artifacts = subcomponent.get('_artifacts', None)
+        if building_system and splits:
+            artifacts = []
+            for c in subchunks:
+                if c['artifact'] in splits:
+                    artifacts.append(c)
 
         if artifacts:
-            for artifact, chunks in artifacts:
-                _install(defs, this, defs.get(artifact), chunks)
+            for a in artifacts:
+                _install(defs, this, subcomponent, a.get('chunks'))
         else:
             if subcomponent.get('build-mode', 'staging') != 'bootstrap':
                 _install(defs, this, subcomponent, splits)
 
     unpackdir = cache.unpack(defs, component)
-    if this.get('kind') is 'system':
+    if building_system:
         ## if the artifact is a split one, we want to assemble a list
         ## of "products" to unpack and use utils.copy_file_list() instead
-        if splits:
+        if splits and (component.get('kind') in ['chunk', None]):
             files = []
-            for artifact in splits:
-                files.extend(artifact['files'])
+            for a in subchunks:
+                if a['artifact'] in splits:
+                    files.extend(a['files'])
             utils.copy_file_list(unpackdir, this['sandbox'], files)
         else:
             utils.copy_all_files(unpackdir, this['sandbox'])
